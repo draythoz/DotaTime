@@ -1,0 +1,28 @@
+{
+    "timeEvents" : 
+        [{
+            "time" : 10,
+            "message" : "Let's play some Dota"
+        },
+        {
+            "time" : 420,
+            "message" : "Tier 1 Items"
+        },
+        {
+            "time" : 900,
+            "message" : "Tier 2 Items"
+        },
+        {
+            "time" : 1500,
+            "message" : "Tier 3 Items"
+        },
+        {
+            "time" : 2400,
+            "message" : "Tier 4 Items"
+        },
+        {
+            "time" : 3600,
+            "message" : "Tier 5 Items"
+        }
+    ]
+}

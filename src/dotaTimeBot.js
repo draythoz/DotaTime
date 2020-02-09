@@ -1,5 +1,7 @@
 const Discord = require('discord.js');
 const {prefix, token}= require('../token-config.json')
+const timeEventsJson = require('./timeEvents.json');
+const commandHelpJson = require('./commandHelp.json');
 const client = new Discord.Client();
 
 var dotamatch = false;
@@ -7,16 +9,16 @@ var gametime = 0;
 var interval;
 var messageloop = 30;
 var roshTracker = false;
-var roshTime = 0;
 var catchDelete = false;
 var flagDelete = false;
+var timeEvents = {};
 
 client.on('ready', () => {
     console.log(`Logged in as ${client.user.tag}!`)
   })
   
   client.on('message', msg => {
-    if (msg.content.search(/dm exit/i) > -1)
+    if (msg.content.startsWith(`${prefix} exit`))
     {
       throw '';
     }
@@ -33,6 +35,11 @@ client.on('ready', () => {
     if (msg.content === `${prefix} ping`)
     {
       msg.channel.send("Pong");
+    }
+
+    if (msg.content.startsWith(`${prefix} help`) || msg.content.startsWith(`${prefix} ?`))
+    {
+      msg.author.send(getCommandHelp());
     }
     
     // Murph plays 3 heroes
@@ -51,6 +58,7 @@ client.on('ready', () => {
     //Start a dota match
     else if (msg.content.startsWith(`${prefix} start`))
     {
+      timeEvents = buildTimeDictionary(timeEventsJson);
       //Parse the time
       var timeInd = msg.content.search(/start/i);
       var timeStr = msg.content.substring(timeInd + 6);
@@ -61,7 +69,7 @@ client.on('ready', () => {
           timeInt = 0;
       }
 
-      msg.channel.send("Dota match initiated with time "+timeInt.toString() +"s", {tts: false});
+      msg.channel.send("Dota match initiated with time "+ timeInt.toString() +"s", {tts: false});
       
       dotamatch = true;
       gametime=timeInt;
@@ -74,6 +82,8 @@ client.on('ready', () => {
     // Stop DotaMatch
     else if ( msg.content.startsWith(`${prefix} stop`))
     {
+      timeEvents = {};
+      roshTracker = false;
       if (dotamatch)
       {
         clearInterval(interval);
@@ -90,14 +100,17 @@ client.on('ready', () => {
     // Set the time during a DotaMatch
     else if (msg.content.startsWith(`${prefix} set time`))
     {
-      var timeStr = msg.content.substring(msg.content.search(/time set/i) + 8);
+      var timeStr = msg.content.substring(msg.content.search(/set time/i) + 8);
       
       if (timeStr.includes(":"))
       {
-        console.log("timeStr includes :")
         timeInt = getSecondsFromGametime(timeStr);
       }
-      var timeInt = parseInt(timeStr);
+      else
+      {
+        var timeInt = parseInt(timeStr);
+      }
+
       gametime=timeInt;
       if(dotamatch)
       {
@@ -110,15 +123,29 @@ client.on('ready', () => {
       }
       flagDelete = true;
     }
+    //start rosh trackers
     else if (msg.content.startsWith(`${prefix} rosh`))
     {
-      roshTracker = true;
-      roshTime = gametime;
-      msg.channel.send("Rosh taken at " + getGameTimeReadable(roshTime));
+      if (roshTracker == false)
+      {
+        addRoshTimeEvents(gametime);
+        roshTracker = true
+        setTimeout(
+          function() {
+            console.log("setting rosh track to false");
+            roshTracker = false;
+          }, 480 * 1000
+        );
+        msg.channel.send("Rosh taken at " + getGameTimeReadableFromSeconds(gametime));
+      }
+      else
+      {
+        msg.channel.send("Rosh has not respawned yet.");
+      }
     }
     else if (msg.content.startsWith(`${prefix} time`))
     {
-      msg.channel.send("gametime is " + getGameTimeReadable(gametime));
+      msg.channel.send("gametime is " + getGameTimeReadableFromSeconds(gametime));
     }
     if (flagDelete == true)
     {
@@ -141,50 +168,11 @@ client.on('ready', () => {
     {
       channel.send("60 seconds to outpost XP", {tts: true});
     }
-    if (gametime == 420)
+    if (timeEvents[gametime] != null)
     {
-      channel.send("Tier 1 Items", {tts: true});
+      channel.send(timeEvents[gametime], {tts: true});
     }
-    if (gametime == 900)
-    {
-      channel.send("Tier 2 Items", {tts: true});
-    }
-    if (gametime == 1500)
-    {
-      channel.send("Tier 3 Items", {tts: true});
-    }
-    if (gametime == 2400)
-    {
-      channel.send("Tier 4 Items", {tts: true});
-    }
-    if (gametime == 3600)
-    {
-      channel.send("Tier 5 Items", {tts: true});
-    }
-    if (roshTracker)
-    {
-    //   if (gametime - roshTime == 230)  //gametime - roshtime == 270   ???
-    //   {
-    //     channel.send("aegis expiring in 30 seconds", {tts: true});
-    //   }
-      if (gametime - roshTime == 270)
-      {
-        channel.send("aegis expiring in 30 seconds", {tts: true});
-      }
-      if (gametime - roshTime == 300)
-      {
-        channel.send("aegis expiring", {tts: true});
-      }
-      if (gametime - roshTime == 450)
-      {
-        channel.send("30 til Rosh Could Spawn", {tts: true});
-      }
-      if (gametime - roshTime == 480)
-      {
-        channel.send("Rosh Could Spawn", {tts: true});
-        roshTracker = false;
-      }
-    }
+    
     gametime++;
     return;
   }
@@ -194,33 +182,72 @@ client.on('ready', () => {
       timeMinutes = Math.floor(Math.abs(seconds) / 60);
       timeSeconds = Math.abs(seconds) % 60;
 
+      if (timeSeconds < 10)
+      {
+        return `${timeMinutes}:0${timeSeconds}`;
+      }
       return `${timeMinutes}:${timeSeconds}`;
   }
 
   function getSecondsFromGametime(timeStr)
   {
-      console.log(`getSecondsFromGametime passed timeStr = ${timeStr}`)
+    timeStr = timeStr.trim();
     if (timeStr.includes(":"))
     {
        var colonIndex = timeStr.indexOf(":");
-       var timeMinutesStr = (timeStr.substring(0, timeStr.length - colonIndex)).trim();
+       var timeMinutesStr = (timeStr.substring(0, colonIndex)).trim();
        var timeSecondsStr = (timeStr.substring(colonIndex + 1, colonIndex + 3)).trim();
-        console.log(`timeMinutesStr = ${timeMinutesStr}`);
-        console.log(`timeSecondsStr = ${timeSecondsStr}`);
        timeMinutes = parseInt(timeMinutesStr);
        timeSeconds = parseInt(timeSecondsStr);
-       console.log(`timeMinutes = ${timeMinutes}`);
-       console.log(`timeSeconds = ${timeSeconds}`);
     }
 
     var seconds = (timeMinutes * 60) + timeSeconds
     return seconds;
   }
 
-//   function getSecondsFromGametime(timeMinutes, timeSeconds)
-//   {
-//     var seconds = (timeMinutes * 60) + timeSeconds
-//     return seconds;
-//   }
-  
+  function buildTimeDictionary(timeEventsJson)
+  {
+    var timeEventDictionary = {};
+
+    for (var i = 0; i < timeEventsJson.timeEvents.length; i++) {
+      timeEventMessage = timeEventsJson.timeEvents[i].message;
+      timeEventDictionary[parseInt(timeEventsJson.timeEvents[i].time)] = timeEventMessage;
+    }
+
+    return timeEventDictionary;
+  }
+
+  function addTimeEvent(time, message)
+  {
+    if (timeEvents[time] == null)
+    {
+      timeEvents[time] = message;
+    }
+    else
+    {
+      timeEvents[time] = timeEvents[time] + `, ${message}`;
+    }
+  }
+
+  function addRoshTimeEvents(roshTakenTime)
+  {
+    addTimeEvent(roshTakenTime + 270, "Aegis expiring in 30 seconds");
+    addTimeEvent(roshTakenTime + 300, "Aegis expiring");
+    addTimeEvent(roshTakenTime + 450, "30 until Rosh could spawn");
+    addTimeEvent(roshTakenTime + 480, "Rosh could spawn");
+  }
+
+  function getCommandHelp()
+  {
+    var listOfCommands = ""
+    for(var i = 0; i < commandHelpJson.commands.length; i++)
+    {
+        listOfCommands = listOfCommands + "Command: " + commandHelpJson.commands[i].command + "\n";
+        listOfCommands = listOfCommands + "Description: " + commandHelpJson.commands[i].description + "\n";
+        listOfCommands = listOfCommands + "Example Usage: " + commandHelpJson.commands[i].example + "\n\n";
+    }
+
+    return listOfCommands;
+  }
+
 client.login(token);

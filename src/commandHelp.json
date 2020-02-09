@@ -1,0 +1,34 @@
+{
+    "commands" : 
+        [{
+            "command" : "ping",
+            "description" : "Pong.  Sanity Check to see if the service is running.",
+            "example" : "!dt ping"
+        },
+        {
+            "command" : "start [time]",
+            "description" : "Will start the dota match timers, with time initialized in seconds.  Defaults to 0:00 game time.",
+            "example" : "!dt start -60"
+        },
+        {
+            "command" : "stop",
+            "description" : "Will stop the current dota match timers and clear all time events.",
+            "example" : "!dt stop"
+        },
+        {
+            "command" : "time",
+            "description" : "Will give the game time in xx:xx format",
+            "example" : "!dt time"
+        },
+        {
+            "command" : "set time [time]",
+            "description" : "Will manually set the game time.  Accepts time in seconds, or in time format xx:xx",
+            "example" : "!dt set time 2:37 or !dt set time 157"
+        },
+        {
+            "command" : "rosh",
+            "description" : "Will start the rosh tracker.  Will announce aegis expiring and earliest rosh respawn time.",
+            "example" : "!dt rosh"
+        }
+    ]
+}
