@@ -1,6 +1,7 @@
 # DotaTime
 DotaTime is a discord bot that acts as a timer for your dota matches.  It keeps track of gametime based on the time passed, and announces key events such as bounty runes coming up or neutral item spawn times.
 
+Based off code by [Tethrinaa](https://github.com/Tethrinaa/).
 ## Setup
 In order to set up your bot, I suggest following this tutorial https://www.toptal.com/chatbot/how-to-make-a-discord-bot
 
