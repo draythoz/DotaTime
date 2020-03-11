@@ -3,6 +3,8 @@ const {prefix, token}= require('../token-config.json')
 const timeEventsJson = require('./timeEvents.json');
 const commandHelpJson = require('./commandHelp.json');
 const client = new Discord.Client();
+const escapeRegex = str => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const useTTS = true; //silent mode for quiter testing
 
 var dotamatch = false;
 var gametime = 0;
@@ -13,95 +15,117 @@ var catchDelete = false;
 var flagDelete = false;
 var timeEvents = {};
 
+
 client.on('ready', () => {
     console.log(`Logged in as ${client.user.tag}!`)
+    console.log(client.user.id);
   })
   
   client.on('message', msg => {
-    if (msg.content.startsWith(`${prefix} exit`))
-    {
-      throw '';
-    }
-    if(catchDelete)
-    {
-      catchDelete = false;
-      flagDelete = true;
-    }
-    if (msg.tts == true)
-    {
-      flagDelete = true;
-    }
-    //Ping Pong
-    if (msg.content === `${prefix} ping`)
-    {
-      msg.channel.send("Pong");
-    }
+    const prefixRegex = new RegExp(`^(<@!?&?${client.user.id}>|${escapeRegex(prefix)})\\s*`);
+    if (!prefixRegex.test(msg.content)) return;
 
-    if (msg.content.startsWith(`${prefix} help`) || msg.content.startsWith(`${prefix} ?`))
-    {
-      msg.author.send(getCommandHelp());
-    }
-    
-    // Murph plays 3 heroes
-    else if (((msg.content.search(/murph/i) > -1) || (msg.content.search(/supermurph/i) > -1)) && (msg.content.search(/pick/i) > -1))
-    {
-      msg.channel.send("Sniper, Viper, or Axe",{tts: true});
-      flagDelete = true;
-    }
-    
-    // Murph lags
-    else if (((msg.content.search(/throw/i) > -1) || (msg.content.search(/die/i) > -1) || (msg.content.search(/feed/i) > -1)) && (msg.content.search(/murph/i) > -1))
-    {
-      msg.channel.send("Lag",{tts: true});
-    }
-    
-    //Start a dota match
-    else if (msg.content.startsWith(`${prefix} start`))
-    {
-      timeEvents = buildTimeDictionary(timeEventsJson);
-      //Parse the time
-      var timeInd = msg.content.search(/start/i);
-      var timeStr = msg.content.substring(timeInd + 6);
-      var timeInt = parseInt(timeStr);
+    const channel = msg.channel;
+    const [, matchedPrefix] = msg.content.match(prefixRegex);
+    const args = msg.content.slice(matchedPrefix.length).trim().split(/ +/);
+    const command = args.shift().toLowerCase();
+    //prefix command args[0] args[1] ... args[n]
 
-      if (isNaN(timeInt))
+    try
+    {
+      switch (command)
       {
-          timeInt = 0;
+        case 'ping':
+          channel.send('Pong!');
+          break;
+
+        case 'prefix':
+          msg.reply(`you can either ping me or use \`${prefix}\` as my prefix.`);
+          break;
+
+        case '?':
+        case 'help':
+        case 'readme':
+          msg.author.send(getCommandHelp());
+          break;
+
+        case 'start':
+          startMatch(channel, args[0]);
+          break;
+
+        case 'stop':
+        case 'quit':
+          stopMatch(channel);
+          break;
+
+        case 'aegis':
+        case 'rosh':
+        case 'roshan':
+          startRoshanTimer(channel);
+          break;
+        
+        case 'time':
+          channel.send("gametime is " + getGameTimeReadableFromSeconds(gametime));
+          break;
+        
+        case 'set':
+          if (args[0] === 'time')
+          {
+            setMatchTime(channel, args[1]);
+          } 
       }
-
-      msg.channel.send("Dota match initiated with time "+ timeInt.toString() +"s", {tts: false});
-      
-      dotamatch = true;
-      gametime=timeInt;
-      interval = setInterval(function()
-      {
-        evaluateGameState(msg.channel);
-      }, 1 * 999);
-      flagDelete = true;
-    }
-    // Stop DotaMatch
-    else if ( msg.content.startsWith(`${prefix} stop`))
+    }    
+    catch (err)  
     {
-      timeEvents = {};
+      console.log(err);
+      channel.send("Command was unsuccessful.");
+    }
+  })
+
+  function startMatch(channel, timeStr)
+  {
+    timeEvents = buildTimeDictionary(timeEventsJson);
+    //Parse the time
+    var timeInt = parseInt(timeStr);
+
+    if (isNaN(timeInt))
+    {
+        timeInt = 0;
+    }
+
+    channel.send("Dota match initiated with time "+ timeInt.toString() +"s", {tts: false});
+    
+    dotamatch = true;
+    gametime=timeInt;
+    interval = setInterval(function()
+    {
+      evaluateGameState(channel);
+    }, 1 * 999);
+    flagDelete = true;
+  }
+
+  function stopMatch(channel)
+  {
+    timeEvents = {};
       roshTracker = false;
       if (dotamatch)
       {
         clearInterval(interval);
-        msg.channel.send("Dotamatch stopped",{tts: false});
+        channel.send("Dotamatch stopped",{tts: false});
         dotamatch = false;
       }
       else
       {
-        msg.channel.send("Error - No match in progress");
-        console.log("path 2");
+        channel.send("Error - No match in progress");
       }
       flagDelete = true;
-    }
-    // Set the time during a DotaMatch
-    else if (msg.content.startsWith(`${prefix} set time`))
-    {
-      var timeStr = msg.content.substring(msg.content.search(/set time/i) + 8);
-      
+  }
+
+    //!dt set time 130
+    //!dt set time 7:42
+    //!dt command args[0] args[1]
+  function setMatchTime(channel, timeStr) //args[1] should be the timeStr
+  {      
       if (timeStr.includes(":"))
       {
         timeInt = getSecondsFromGametime(timeStr);
@@ -111,22 +135,26 @@ client.on('ready', () => {
         var timeInt = parseInt(timeStr);
       }
 
+      if (isNaN(timeInt))
+      {
+        throw "Invalid Time Argument Passed to set time: " + timeStr
+      }
+
       gametime=timeInt;
       if(dotamatch)
       {
-        msg.channel.send("Setting clock to " + timeInt.toString() +"s");
+        channel.send("Setting clock to " + timeInt.toString() +"s");
       }
       else
       {
-        msg.channel.send("Error - No match in progress");
-        console.log("path 1");
+        channel.send("Error - No match in progress");
       }
       flagDelete = true;
-    }
-    //start rosh trackers
-    else if (msg.content.startsWith(`${prefix} rosh`))
-    {
-      if (roshTracker == false)
+  }
+
+  function startRoshanTimer(channel)
+  {
+    if (roshTracker == false)
       {
         addRoshTimeEvents(gametime);
         roshTracker = true
@@ -136,23 +164,14 @@ client.on('ready', () => {
             roshTracker = false;
           }, 480 * 1000
         );
-        msg.channel.send("Rosh taken at " + getGameTimeReadableFromSeconds(gametime));
+        channel.send("Rosh taken at " + getGameTimeReadableFromSeconds(gametime));
       }
       else
       {
-        msg.channel.send("Rosh has not respawned yet.");
+        channel.send("Rosh has not respawned yet.");
       }
-    }
-    else if (msg.content.startsWith(`${prefix} time`))
-    {
-      msg.channel.send("gametime is " + getGameTimeReadableFromSeconds(gametime));
-    }
-    if (flagDelete == true)
-    {
-      flagDelete = false;
-      msg.delete(5000);
-    }
-  })
+  }
+  
   
   function evaluateGameState(channel){
     messageloop++;
@@ -162,15 +181,15 @@ client.on('ready', () => {
     }
     if (gametime % 300 == 270)
     {
-      channel.send("30 seconds to bounties", {tts: true});
+      channel.send("30 seconds to bounties", {tts: (useTTS && true)});
     }
     if (gametime % 600 == 540)
     {
-      channel.send("60 seconds to outpost XP", {tts: true});
+      channel.send("60 seconds to outpost XP", {tts: (useTTS && true)});
     }
     if (timeEvents[gametime] != null)
     {
-      channel.send(timeEvents[gametime], {tts: true});
+      channel.send(timeEvents[gametime], {tts: (useTTS && true)});
     }
     
     gametime++;
